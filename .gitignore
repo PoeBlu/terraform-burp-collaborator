@@ -1,5 +1,10 @@
 burpsuite_pro_v*.jar
 terraform.tfstate*
-tls/burp.*
+burp.*
+intermediate.crt
 mykeypair*
 inventory
+.terraform
+ab-burp-collab-kp*
+playbook.retry
+

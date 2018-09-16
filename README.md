@@ -156,6 +156,18 @@ Now run the `plan` and `apply` steps as above. It will output the public IP addr
 terraform output public_ip
 ```
 
+For the DNS updates, here is what you need to do:
+
+* Create an A record for your `burp_zone` pointing to the public IP. In my case, my `burp_zone` is `burp-collaborator` so my A record entry looks like (I use Namecheap for my DNS needs), where `x.y.z.p` should be the public IP of your instance obtained from `terraform output public_ip`:
+```
+A Record | burp-collaborator | x.y.z.p | Automatic
+```
+
+* Create an NS record for your `burp_zone` pointing to `burp_zone.zone`. In my case, my `burp_zone` is `burp-collaborator` and my `zone` is `anshumanbhartiya.com` so my entry looks like this:
+```
+NS Record | burp-collaborator | burp-collaborator.anshumanbhartiya.com. | Automatic
+``` 
+
 ## Testing
 
 If everything went ok you should be able to plug the hostname of your new private server into Burp and test it out.
@@ -166,19 +178,41 @@ In _Server location_ enter the hostname of your server. Hint, this will be the v
 
 ### Using a "proper" TLS certificate
 
-If you would like to purchase a proper wildcard TLS certificate for use with this server you need to generate a more appropriate CSR (the default values are fairly generic). There is an Ansible playbook included in this folder to help you.
+LetsEncrypt lets you create `free` wildcard certificates for your domain now so lets use that to generate a SSL cert for our domain:
 
-Once you have the CSR you can go and purchase a Wildcard TLS certificate with it and then upload it to your Burp server.
+* SSH onto the instance that was created for the Burp Collaborator server. The command should look like `ssh -i <ssh-private-key> ubuntu@<public-ip>`
 
-Here are the steps.
+* Run the following commands (after replacing your email and domain which are marked as redacted below):
+```
+apt-get update
+apt-get install python-minimal
+python --version
+apt-get install git-core
+git --version
+cd /opt
+git clone https://github.com/certbot/certbot.git
+cd certbot
+./certbot-auto certonly --manual --preferred-challenges=dns --email <redacted> --server https://acme-v02.api.letsencrypt.org/directory --agree-tos -d *.<redacted>.com
+```
 
-1. Edit [owntls.yml](owntls.yml) and set the different variables according to what you want in your certificate
-2. Delete the generated CSR: `rm burp.csr`
-3. `ansible-playbook -i inventory owntls.yml --tags tls`
-4. Use the contents of the newly generated _burp.csr_ file to purchase your certificate.
-5. Copy your new certificate to _burp.crt_
-6. Copy any intermediate CA cert bundle to _intermediate.crt_
-7. `ansible-playbook -i inventory playbook.yml --tags setup,restart`
+After the last command, you will be asked to verify a TXT record on your domain to verify the ownership. Simply, go to your DNS management console and create a TXT record that should look like this:
+```
+TXT Record | _acme-challenge | whatever_value_you_are_asked_to_add | Automatic
+```
+
+PS - Notice that we are actually creating a wildcard SSL cert for `*.yourdomain.com` so this should serve not only `burp-collaborator.yourdomain.com` but also any other subdomains. 
+
+Once the certificate and key are successfully created, make sure the certificate is valid by typing `./certbot-auto certificates`
+
+* Next, copy the cert file from the EC2 instance over to the local directory and overwrite the `burp.crt` file with that.
+
+* Copy the key file from the EC2 instance over the local directory and overwrite the `burp.pk8` file with that. 
+
+* Run `ansible-playbook -i inventory playbook.yml --tags setup,restart`
+
+* Your Burp Collaborator server should successfully restart and you can now access it over SSL as well. Go back to your Burp under Project Options -> Misc and uncheck `Poll over unencrypted HTTP` and Run a health check. Everything should be Green. 
+
+Congratulations, You are all set with your own private Burp Collaborator server!!
 
 
 ## Destroying
